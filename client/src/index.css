@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans transition-colors duration-700 bg-zen-paper text-zen-blue overflow-x-hidden antialiased;
+  }
+  
+  .dark body {
+    @apply bg-zen-slate text-zen-paper;
+  }
+}
+
+@layer components {
+  .vips-bg-overlay {
+    @apply fixed inset-0 -z-50 pointer-events-none;
+    background: radial-gradient(circle at 30% 30%, rgba(132, 169, 140, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 70% 70%, rgba(30, 58, 95, 0.08) 0%, transparent 50%);
+    filter: blur(80px);
+  }
+  
+  .dark .vips-bg-overlay {
+    background: radial-gradient(circle at 30% 30%, rgba(132, 169, 140, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 70% 70%, rgba(30, 58, 95, 0.1) 0%, transparent 50%);
+  }
+
+  .btn-primary {
+    @apply bg-zen-blue text-zen-paper px-8 py-5 rounded-[2rem] font-display font-black uppercase tracking-[0.2em] text-[10px] transition-all hover:scale-[1.05] active:scale-95 shadow-academic hover:shadow-zen-sage/20 border border-transparent hover:border-zen-sage/30;
+  }
+
+  .btn-secondary {
+    @apply glass-card px-8 py-5 rounded-[2rem] font-display font-black uppercase tracking-[0.2em] text-[10px] text-zen-blue dark:text-zen-paper transition-all hover:bg-white/50 dark:hover:bg-white/10 border-zen-blue/10 hover:border-zen-sage/30;
+  }
+  
+  .glass-container {
+    @apply glass-card dark:glass-card-dark p-8 md:p-12 rounded-[2.5rem] border-zen-blue/5 dark:border-white/5;
+  }
+
+  .neural-orb {
+    @apply relative w-64 h-64 rounded-full;
+    background: radial-gradient(circle at 30% 30%, #84A98C 0%, #1E3A5F 100%);
+    box-shadow: 0 0 80px rgba(132, 169, 140, 0.3), inset 0 0 40px rgba(255, 255, 255, 0.2);
+    animation: breathing-orb 8s ease-in-out infinite;
+  }
+
+  .neural-orb::after {
+    content: '';
+    @apply absolute inset-0 rounded-full;
+    background: radial-gradient(circle at 70% 70%, rgba(205, 180, 219, 0.3) 0%, transparent 70%);
+    filter: blur(10px);
+  }
+}
+
+@keyframes breathing-orb {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.05); filter: brightness(1.1); }
+}
+
+@keyframes neural-pulse {
+  0% { transform: scale(0.95); opacity: 0.3; }
+  50% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(0.95); opacity: 0.3; }
+}
+
+.animate-neural {
+  animation: neural-pulse 6s ease-in-out infinite;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 3s infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-zen-blue/10 dark:bg-white/10;
+}

@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+*.local
+OpenAI_API_Key.txt
+
+# Runtime and cache files
+.cache/
+.parcel-cache/
+.vite/
+.turbo/
+tmp/
+temp/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editor and OS files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
