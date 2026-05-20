@@ -3,6 +3,8 @@ import { Recommendation } from '../models/Recommendation.js';
 import { Session } from '../models/Session.js';
 import { MoodLog } from '../models/MoodLog.js';
 
+const DEFAULT_GEMINI_API_VERSION = 'v1';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
 
 const SYSTEM_PROMPT = `You are "InnerPulse Guru," a calm and emotionally intelligent wellness AI for yoga, mindfulness, breathwork, recovery, and emotional wellbeing.
 
@@ -24,10 +26,136 @@ Formatting Rules:
 
 Safety: Never provide medical advice.`;
 
+const normalizeGeminiModel = (model) => (
+  (model || DEFAULT_GEMINI_MODEL)
+    .replace(/^models\//, '')
+    .trim()
+);
+
+const getGeminiEndpoint = () => {
+  const apiVersion = (process.env.GEMINI_API_VERSION || DEFAULT_GEMINI_API_VERSION).trim();
+  const model = normalizeGeminiModel(process.env.GEMINI_MODEL);
+
+  return `https://generativelanguage.googleapis.com/${apiVersion}/models/${encodeURIComponent(model)}:generateContent`;
+};
+
+const toGeminiRole = (role) => {
+  if (['guru', 'assistant', 'model'].includes(role)) return 'model';
+  return 'user';
+};
+
+const buildChatContents = (message, history = [], instructionText = '') => {
+  const previousMessages = Array.isArray(history) ? history.slice(-8) : [];
+  const currentMessage = instructionText
+    ? `${instructionText}\n\nUser message:\n${message.trim()}`
+    : message.trim();
+
+  const contents = previousMessages
+    .map((item) => {
+      const text = String(item?.text || item?.content || item?.message || '').trim();
+      if (!text) return null;
+
+      return {
+        role: toGeminiRole(item?.role),
+        parts: [{ text }]
+      };
+    })
+    .filter(Boolean);
+
+  contents.push({
+    role: 'user',
+    parts: [{ text: currentMessage }]
+  });
+
+  return contents;
+};
+
+const extractGeminiReply = (responseData) => {
+  const blockReason = responseData?.promptFeedback?.blockReason;
+  if (blockReason) {
+    throw new Error(`Gemini blocked the prompt: ${blockReason}`);
+  }
+
+  const candidate = responseData?.candidates?.[0];
+  const text = candidate?.content?.parts
+    ?.map((part) => part.text)
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+
+  if (!text) {
+    const finishReason = candidate?.finishReason ? ` Finish reason: ${candidate.finishReason}.` : '';
+    throw new Error(`Gemini returned no text.${finishReason}`);
+  }
+
+  return text;
+};
+
+const buildPromptAwareFallback = ({ message, lastMood }) => {
+  const lowerMessage = message.toLowerCase();
+  const intro = 'I am having trouble reaching the AI service right now, so here is a grounded fallback based on your message.\n\n';
+
+  if (lowerMessage.includes('sleep') || lowerMessage.includes('insomnia')) {
+    return `${intro}### Sleep Reset
+- Keep the practice gentle: reclined breathing or legs-up-the-wall for 5-8 minutes.
+- Try a 4-second inhale and 6-second exhale.
+- Reduce bright screens and stimulating movement for the next 20 minutes.
+
+If sleeplessness is frequent or severe, consider speaking with a qualified health professional.`;
+  }
+
+  if (lowerMessage.includes('stress') || lowerMessage.includes('anxious') || lowerMessage.includes('anxiety') || lastMood === 'stressed' || lastMood === 'Very Stressed') {
+    return `${intro}### Nervous System Reset
+- Start with Child's Pose or a comfortable seated position.
+- Breathe through the nose for 2 minutes, making the exhale slightly longer.
+- Then do a slow neck and shoulder release.
+
+Keep the goal simple: less intensity, more steadiness.`;
+  }
+
+  if (lowerMessage.includes('stretch') || lowerMessage.includes('stiff') || lowerMessage.includes('tight')) {
+    return `${intro}### Quick Mobility Flow
+- Cat-cow: 6 slow rounds.
+- Low lunge: 45 seconds each side.
+- Seated forward fold: 60 seconds with soft knees.
+
+Move only to a comfortable range and avoid forcing the stretch.`;
+  }
+
+  if (lowerMessage.includes('breath') || lowerMessage.includes('breathing')) {
+    return `${intro}### Simple Breathing Practice
+- Inhale for 4 counts.
+- Exhale for 6 counts.
+- Repeat for 8-10 rounds.
+
+If you feel dizzy, return to natural breathing.`;
+  }
+
+  if (lowerMessage.includes('energy') || lowerMessage.includes('morning') || lastMood === 'happy') {
+    return `${intro}### Gentle Energy Flow
+- Mountain Pose with steady breathing.
+- 3 slow half sun salutations.
+- Finish with a short standing balance pose.
+
+Aim for alert and calm, not rushed.`;
+  }
+
+  return `${intro}### Suggested Focus
+- Begin with Mountain Pose and notice your breath.
+- Choose one small action: stretch, breathe, or rest.
+- Keep the practice under 10 minutes if your body feels uncertain.
+
+Tell me what you are feeling physically or emotionally, and I can narrow this down.`;
+};
+
 export const getGuruResponse = async (req, res) => {
   try {
-    const { message, context } = req.body;
+    const { message, history } = req.body;
     const userId = req.user.id;
+
+    if (typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ success: false, message: 'Message is required.' });
+    }
 
     const user = await User.findById(userId);
     if (!user) {
@@ -37,9 +165,10 @@ export const getGuruResponse = async (req, res) => {
     const moodLogs = await MoodLog.find({ userId }).sort({ createdAt: -1 }).limit(5);
     const lastMood = moodLogs[0]?.mood || 'neutral';
     const moodHistory = moodLogs.map(l => `${l.mood} (Stress: ${l.stressScore}/10)`).join(', ');
+    const profile = user.profile || {};
 
     const personalizedContext = `
-      User: ${user.name}, Flexibility: ${user.profile.flexibilityLevel}, Stress: ${user.profile.currentStressScore}/10.
+      User: ${user.name}, Flexibility: ${profile.flexibilityLevel || 'unknown'}, Stress: ${profile.currentStressScore || 'unknown'}/10.
       Recent Moods: ${moodHistory || 'None'}
     `;
 
@@ -48,19 +177,16 @@ export const getGuruResponse = async (req, res) => {
         throw new Error('GEMINI_API_KEY is not defined in the environment.');
       }
 
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", {
+      const instructionText = SYSTEM_PROMPT + "\n\nContext:\n" + personalizedContext;
+
+      const response = await fetch(getGeminiEndpoint(), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-goog-api-key": process.env.GEMINI_API_KEY
         },
         body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: SYSTEM_PROMPT + "\n\nContext:\n" + personalizedContext }]
-          },
-          contents: [{
-            parts: [{ text: message }]
-          }]
+          contents: buildChatContents(message, history, instructionText)
         })
       });
 
@@ -70,7 +196,7 @@ export const getGuruResponse = async (req, res) => {
       }
 
       const responseData = await response.json();
-      const replyText = responseData.candidates?.[0]?.content?.parts?.[0]?.text || "The digital flow is currently resting.";
+      const replyText = extractGeminiReply(responseData);
 
       return res.status(200).json({
         success: true,
@@ -81,38 +207,11 @@ export const getGuruResponse = async (req, res) => {
       });
     } catch (apiError) {
       console.error('Gemini API Error:', apiError.message);
-      
-      // GURU FALLBACK LOGIC
-      let fallbackReply = `I am sensing a slight interruption in the digital flow, but I am still here to guide you. `;
-      
-      if (lastMood === 'stressed' || lastMood === 'Very Stressed') {
-        fallbackReply += `I notice your stress levels are a bit high. Let's try to ground ourselves. 
+      const fallbackReply = buildPromptAwareFallback({ message, lastMood });
 
-### Recommended Reset
-- **Child's Pose**: 5 minutes
-- **Breathing**: Slow, nasal inhales and exhales
-
-I am here to support you. What else is on your mind?`;
-      } else if (lastMood === 'happy') {
-        fallbackReply += `Your energy feels wonderful today. This is a great time for some movement.
-
-### Recommended Flow
-- **Sun Salutations**: 3-5 rounds
-- **Focus**: Strength and expansion
-
-How can I help you maintain this positive state?`;
-      } else {
-        fallbackReply += `The flow is stable. I recommend focusing on your alignment today. 
-
-### Suggested Focus
-- **Mountain Pose**: Check your grounding
-- **Breath**: Maintain a steady rhythm
-
-How else can I assist with your wellness goals today?`;
-      }
-
-      return res.status(200).json({
-        success: true,
+      return res.status(503).json({
+        success: false,
+        message: 'AI provider is unavailable. Showing fallback guidance.',
         data: {
           reply: fallbackReply,
           timestamp: new Date(),

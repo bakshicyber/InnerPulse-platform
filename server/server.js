@@ -1,7 +1,8 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-console.log('Environment Check - API Key exists:', !!process.env.OPENAI_API_KEY);
+console.log('Environment Check - Gemini API Key exists:', !!process.env.GEMINI_API_KEY);
+console.log('Environment Check - Gemini Model:', process.env.GEMINI_MODEL || 'gemini-3.5-flash');
 
 import express from 'express';
 import cors from 'cors';
