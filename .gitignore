@@ -21,6 +21,8 @@ lerna-debug.log*
 # Environment and secrets
 .env
 .env.*
+!.env.example
+!**/.env.example
 *.local
 OpenAI_API_Key.txt
 

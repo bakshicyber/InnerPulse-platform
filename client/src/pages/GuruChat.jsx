@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Sparkles, Brain, ShieldCheck, Info, MessageSquare, Wind, Zap, Sun, Moon, Cloud, ArrowRight, Shield, Paperclip } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -28,10 +28,27 @@ const GuruChat = () => {
     setLoading(true);
 
     try {
-      const res = await aiApi.chat({ message: msgToProcess });
-      setMessages(prev => [...prev, { role: 'guru', text: res.data.data.reply }]);
+      const history = messages
+        .slice(-8)
+        .map(({ role, text }) => ({ role, text }));
+
+      const res = await aiApi.chat({ message: msgToProcess, history });
+      const reply = res.data?.data?.reply || 'I am here, but I could not form a clear response. Please try again.';
+
+      setMessages(prev => [...prev, {
+        role: 'guru',
+        text: reply,
+        isFallback: Boolean(res.data?.data?.isFallback)
+      }]);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'guru', text: 'I am sensing a slight interruption. Let us breathe and try again.' }]);
+      const fallbackReply = err.response?.data?.data?.reply;
+      const errorMessage = err.response?.data?.message || 'I am sensing a slight interruption. Let us breathe and try again.';
+
+      setMessages(prev => [...prev, {
+        role: 'guru',
+        text: fallbackReply || errorMessage,
+        isFallback: Boolean(fallbackReply)
+      }]);
     } finally {
       setLoading(false);
     }
@@ -100,7 +117,9 @@ const GuruChat = () => {
                   <div className={`max-w-[90%] p-8 md:p-10 rounded-[2.5rem] border border-zen-blue/5 shadow-soft ${msg.role === 'guru' ? 'glass-card bg-white dark:bg-zen-slate/90 rounded-tl-none' : 'bg-zen-blue text-zen-paper rounded-tr-none'}`}>
                     <div className="flex items-center gap-2 mb-6 opacity-40">
                       {msg.role === 'guru' ? <Sparkles className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
-                      <span className="academic-label text-[8px] tracking-[0.2em]">{msg.role === 'guru' ? 'Guru Guidance' : 'Your Reflection'}</span>
+                      <span className="academic-label text-[8px] tracking-[0.2em]">
+                        {msg.role === 'guru' ? (msg.isFallback ? 'Fallback Guidance' : 'Guru Guidance') : 'Your Reflection'}
+                      </span>
                     </div>
                     <div className="markdown-container">
                       <ReactMarkdown components={MarkdownComponents}>
